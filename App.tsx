@@ -1,18 +1,25 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { VirtualOffice } from './components/VirtualOffice';
 import { AvatarEditor } from './components/AvatarEditor';
+import { ChatPanel } from './components/ChatPanel';
 import { Status, AvatarConfig, EditingMode } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './constants';
-import { Mic, MicOff, Monitor, MonitorOff, User, Settings, LogOut, MessageSquare, Hammer, Shirt, BrickWall, Volume2, Eraser, X } from 'lucide-react';
+import { Mic, MicOff, Monitor, MonitorOff, Settings, LogOut, MessageSquare, Hammer, Shirt, BrickWall, Volume2, Eraser, X, Chrome } from 'lucide-react';
+import { auth, googleProvider } from './firebaseConfig';
+import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import { saveUserProfile } from './services/chatService';
 
 const App: React.FC = () => {
-  const [name, setName] = useState("Visitante");
+  // Auth State
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  const [name, setName] = useState("Visitante"); // Fallback or extracted from Google
   const [status, setStatus] = useState<Status>(Status.AVAILABLE);
   const [isMuted, setIsMuted] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isJoined, setIsJoined] = useState(false);
+  
   const [stream, setStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   
@@ -26,14 +33,36 @@ const App: React.FC = () => {
   const [editingMode, setEditingMode] = useState<EditingMode>('none');
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        setName(user.displayName || "Usuario");
+        await saveUserProfile(user);
+      }
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (videoRef.current && stream) {
         videoRef.current.srcObject = stream;
     }
   }, [stream, isScreenSharing]);
 
-  const handleJoin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (name.trim()) setIsJoined(true);
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login failed", error);
+      alert("Error al iniciar sesión con Google. Revisa la consola o configuración de Firebase.");
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setStream(null);
+    setIsScreenSharing(false);
   };
 
   const toggleScreenShare = async () => {
@@ -45,14 +74,12 @@ const App: React.FC = () => {
         setIsScreenSharing(false);
     } else {
         try {
-            // Verify API support
             if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
                 alert("Tu navegador no soporta la función de compartir pantalla.");
                 return;
             }
 
             const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            
             setStream(displayStream);
             setIsScreenSharing(true);
             
@@ -64,57 +91,54 @@ const App: React.FC = () => {
             console.error("Error sharing screen:", err);
             setIsScreenSharing(false);
             setStream(null);
-
-            // Handle specific permission errors
             if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                alert("Permiso denegado. Para compartir pantalla, debes aceptar la solicitud del navegador. Inténtalo de nuevo.");
-            } else if (err.name === 'NotFoundError') {
-                alert("No se encontró ninguna pantalla o ventana para compartir.");
+                alert("Permiso denegado.");
             } else {
-                alert("Ocurrió un error al intentar compartir pantalla: " + (err.message || "Error desconocido"));
+                alert("Error al compartir: " + err.message);
             }
         }
     }
   };
 
-  if (!isJoined) {
+  if (authLoading) {
+    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">Cargando...</div>;
+  }
+
+  if (!currentUser) {
     return (
       <div className="min-h-[100dvh] bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 w-full max-w-md">
-          <div className="text-center mb-8">
-             <div className="w-16 h-16 bg-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30">
-                <User size={32} className="text-white" />
+        <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 w-full max-w-md text-center">
+             <div className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-500/30 transform -rotate-3">
+                <Chrome size={40} className="text-white" />
              </div>
-             <h1 className="text-2xl font-bold text-white mb-2">Bienvenido a la Oficina Virtual</h1>
-             <p className="text-slate-400">Ingresa tu nombre para unirte al espacio de trabajo colaborativo.</p>
-          </div>
-          <form onSubmit={handleJoin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Nombre</label>
-              <input 
-                type="text" 
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                placeholder="Ej: Juan Perez"
-                autoFocus
-              />
-            </div>
-            <button 
-                type="submit"
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition shadow-lg hover:shadow-indigo-500/25"
-            >
-                Entrar a la Oficina
-            </button>
-          </form>
+             <h1 className="text-3xl font-bold text-white mb-3">Oficina Virtual</h1>
+             <p className="text-slate-400 mb-8">Colabora, chatea y muévete en tiempo real.</p>
+             
+             <button 
+                onClick={handleLogin}
+                className="w-full py-3.5 bg-white text-slate-900 font-bold rounded-xl transition hover:bg-slate-200 flex items-center justify-center gap-3 shadow-lg"
+             >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="G" />
+                Iniciar sesión con Google
+             </button>
+             <p className="text-xs text-slate-500 mt-6">
+               Nota: Asegúrate de configurar firebaseConfig.ts con tus credenciales.
+             </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-[100dvh] w-full flex flex-col bg-slate-950 overflow-hidden">
+    <div className="h-[100dvh] w-full flex flex-col bg-slate-950 overflow-hidden relative">
       
+      {/* Global Chat Panel */}
+      <ChatPanel 
+        currentUser={currentUser}
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+      />
+
       {/* Avatar Editor Modal */}
       {isEditingAvatar && (
         <AvatarEditor 
@@ -170,9 +194,6 @@ const App: React.FC = () => {
                         color="bg-red-600"
                     />
                 </div>
-                <div className="text-[10px] text-slate-500 mt-1 max-w-[200px] leading-tight">
-                    {editingMode === 'none' ? 'Selecciona una herramienta.' : 'Haz clic en el mapa para aplicar cambios.'}
-                </div>
             </div>
         )}
 
@@ -186,9 +207,6 @@ const App: React.FC = () => {
                     playsInline 
                     className="w-full h-auto"
                 />
-                <div className="absolute top-2 left-2 bg-red-600 text-white text-[10px] px-2 py-1 rounded animate-pulse">
-                    Compartiendo
-                </div>
             </div>
         )}
       </div>
@@ -205,7 +223,6 @@ const App: React.FC = () => {
                         if(showAdminPanel) setEditingMode('none');
                     }}
                     className={`p-2 md:p-3 rounded-xl border transition hidden sm:flex ${showAdminPanel ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-indigo-400'}`}
-                    title="Modo Edición (Administrador)"
                 >
                     <Hammer size={20} />
                 </button>
@@ -214,7 +231,10 @@ const App: React.FC = () => {
             <div className="h-8 w-[1px] bg-slate-700 mx-2 hidden md:block"></div>
 
             <div className="flex flex-col min-w-0">
-                <h3 className="text-white font-medium text-xs md:text-sm truncate max-w-[100px] md:max-w-xs">{name}</h3>
+                <div className="flex items-center gap-2">
+                    {currentUser.photoURL && <img src={currentUser.photoURL} alt="Me" className="w-5 h-5 rounded-full" />}
+                    <h3 className="text-white font-medium text-xs md:text-sm truncate max-w-[100px] md:max-w-xs">{name}</h3>
+                </div>
                 <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${
                         status === Status.AVAILABLE ? 'bg-green-500' : 
@@ -236,8 +256,6 @@ const App: React.FC = () => {
 
         {/* Center: Main Controls */}
         <div className="flex items-center justify-center gap-2 md:gap-4 flex-1">
-            
-            {/* Microphone */}
             <ToolbarButton 
                 isActive={!isMuted}
                 activeColor="bg-green-600 hover:bg-green-700 text-white shadow-[0_0_15px_rgba(34,197,94,0.4)]"
@@ -247,7 +265,6 @@ const App: React.FC = () => {
                 label={isMuted ? "Silenciado" : "Activo"}
             />
 
-            {/* Chat */}
             <ToolbarButton 
                 isActive={isChatOpen}
                 activeColor="bg-indigo-600 text-white"
@@ -257,7 +274,6 @@ const App: React.FC = () => {
                 label="Chat"
             />
 
-            {/* Screen Share */}
             <ToolbarButton 
                 isActive={isScreenSharing}
                 activeColor="bg-blue-600 text-white shadow-[0_0_15px_rgba(59,130,246,0.4)] animate-pulse"
@@ -266,7 +282,6 @@ const App: React.FC = () => {
                 icon={isScreenSharing ? <Monitor size={20} className="md:w-[22px] md:h-[22px]" /> : <MonitorOff size={20} className="md:w-[22px] md:h-[22px]" />}
                 label="Pantalla"
             />
-
         </div>
 
         {/* Right: Personalization & Exit */}
@@ -284,9 +299,9 @@ const App: React.FC = () => {
                 <Settings size={20} />
             </button>
             <button 
-                onClick={() => setIsJoined(false)}
+                onClick={handleLogout}
                 className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 transition rounded-full"
-                title="Salir"
+                title="Cerrar Sesión"
             >
                 <LogOut size={20} />
             </button>
