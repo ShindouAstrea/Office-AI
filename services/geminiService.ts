@@ -1,20 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { Bot } from "../types";
 
-const API_KEY = process.env.API_KEY || '';
-
-// Initialize client securely. 
-// Note: In a production frontend-only app, you'd proxy this. 
-// For this demo, we assume the env var is injected safely.
-let ai: GoogleGenAI | null = null;
-
-if (API_KEY) {
-    ai = new GoogleGenAI({ apiKey: API_KEY });
-}
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const getGeminiResponse = async (message: string, bot: Bot, history: string[]): Promise<string> => {
-  if (!ai) return "Error: API Key no configurada.";
-
   const systemPrompt = `
     You are ${bot.name}, working as a ${bot.role}.
     Your description: ${bot.description}.
