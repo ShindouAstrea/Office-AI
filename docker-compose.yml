@@ -1,0 +1,13 @@
+services:
+  virtual-office:
+    build: .
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Asegura que los cambios de archivo se detecten
+      - API_KEY=${API_KEY} # Pasa la clave API si está en tu .env local
+    stdin_open: true
+    tty: true
