@@ -2,9 +2,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VirtualOffice } from './components/VirtualOffice';
 import { AvatarEditor } from './components/AvatarEditor';
-import { Status, AvatarConfig } from './types';
+import { Status, AvatarConfig, EditingMode } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './constants';
-import { Mic, MicOff, Monitor, MonitorOff, User, Settings, LogOut, MessageSquare, Hammer, Shirt } from 'lucide-react';
+import { Mic, MicOff, Monitor, MonitorOff, User, Settings, LogOut, MessageSquare, Hammer, Shirt, BrickWall, Volume2, Eraser, X } from 'lucide-react';
 
 const App: React.FC = () => {
   const [name, setName] = useState("Visitante");
@@ -20,8 +20,10 @@ const App: React.FC = () => {
   const [avatarConfig, setAvatarConfig] = useState<AvatarConfig>(DEFAULT_AVATAR_CONFIG);
   const [isEditingAvatar, setIsEditingAvatar] = useState(false);
 
-  // Admin State (Simulation)
-  const isAdmin = true; // In a real app, this would come from auth
+  // Admin / Map Editing State
+  const isAdmin = true; // Simulation
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [editingMode, setEditingMode] = useState<EditingMode>('none');
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -126,7 +128,7 @@ const App: React.FC = () => {
       )}
 
       {/* Main Game Area */}
-      <div className="flex-1 relative min-h-0">
+      <div className="flex-1 relative min-h-0 group">
         <VirtualOffice 
             userName={name}
             userStatus={status}
@@ -135,8 +137,45 @@ const App: React.FC = () => {
             toggleMute={() => setIsMuted(!isMuted)}
             isScreenSharing={isScreenSharing}
             toggleScreenShare={toggleScreenShare}
+            editingMode={editingMode}
         />
         
+        {/* Admin Map Editor Panel */}
+        {showAdminPanel && (
+            <div className="absolute bottom-4 left-4 bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-2xl flex flex-col gap-2 z-30 animate-in slide-in-from-bottom-5">
+                <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Editor de Mapa</span>
+                    <button onClick={() => { setShowAdminPanel(false); setEditingMode('none'); }} className="text-slate-500 hover:text-white"><X size={14}/></button>
+                </div>
+                <div className="flex gap-2">
+                    <EditorButton 
+                        active={editingMode === 'wall'} 
+                        onClick={() => setEditingMode(editingMode === 'wall' ? 'none' : 'wall')}
+                        icon={<BrickWall size={18} />}
+                        label="Muro"
+                        color="bg-slate-600"
+                    />
+                    <EditorButton 
+                        active={editingMode === 'meeting_zone'} 
+                        onClick={() => setEditingMode(editingMode === 'meeting_zone' ? 'none' : 'meeting_zone')}
+                        icon={<Volume2 size={18} />}
+                        label="Zona Audio"
+                        color="bg-green-600"
+                    />
+                     <EditorButton 
+                        active={editingMode === 'eraser'} 
+                        onClick={() => setEditingMode(editingMode === 'eraser' ? 'none' : 'eraser')}
+                        icon={<Eraser size={18} />}
+                        label="Borrar"
+                        color="bg-red-600"
+                    />
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1 max-w-[200px] leading-tight">
+                    {editingMode === 'none' ? 'Selecciona una herramienta.' : 'Haz clic en el mapa para aplicar cambios.'}
+                </div>
+            </div>
+        )}
+
         {/* Local Screen Share Preview (Pip) */}
         {isScreenSharing && stream && (
             <div className="absolute bottom-4 right-4 md:bottom-24 md:right-4 w-32 md:w-64 bg-black rounded-lg overflow-hidden border-2 border-green-500 shadow-2xl z-20">
@@ -161,7 +200,11 @@ const App: React.FC = () => {
         <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-initial min-w-0">
             {isAdmin && (
                 <button 
-                    className="p-2 md:p-3 rounded-xl bg-slate-800 text-slate-400 hover:bg-indigo-900 hover:text-indigo-400 border border-slate-700 transition hidden sm:flex"
+                    onClick={() => {
+                        setShowAdminPanel(!showAdminPanel);
+                        if(showAdminPanel) setEditingMode('none');
+                    }}
+                    className={`p-2 md:p-3 rounded-xl border transition hidden sm:flex ${showAdminPanel ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-indigo-400'}`}
                     title="Modo Edición (Administrador)"
                 >
                     <Hammer size={20} />
@@ -272,6 +315,18 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({ isActive, activeColor, in
         </button>
         <span className="text-[9px] md:text-[10px] text-slate-500 font-medium group-hover:text-slate-300 transition-colors hidden sm:block">{label}</span>
     </div>
+);
+
+const EditorButton: React.FC<{active: boolean, onClick: () => void, icon: React.ReactNode, label: string, color: string}> = ({
+    active, onClick, icon, label, color
+}) => (
+    <button 
+        onClick={onClick}
+        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${active ? `${color} text-white ring-2 ring-white` : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+    >
+        {icon}
+        <span className="text-[8px] font-bold uppercase">{label}</span>
+    </button>
 );
 
 export default App;

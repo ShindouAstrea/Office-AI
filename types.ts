@@ -55,10 +55,12 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
+export type EditingMode = 'none' | 'wall' | 'meeting_zone' | 'eraser';
+
 export interface Rect {
   x: number;
   y: number;
   w: number;
   h: number;
-  type: 'desk' | 'wall' | 'plant' | 'meeting_room';
+  type: 'desk' | 'wall' | 'plant' | 'meeting_room' | 'meeting_zone';
 }

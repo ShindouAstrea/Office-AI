@@ -1,5 +1,6 @@
+
 import React, { useRef, useEffect, useState } from 'react';
-import { User, Position, Bot, Rect, Status, AvatarConfig, AvatarLayer } from '../types';
+import { User, Position, Bot, Rect, Status, AvatarConfig, AvatarLayer, EditingMode } from '../types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_RADIUS, OFFICE_LAYOUT, INITIAL_USER_POS, BOTS, PROXIMITY_THRESHOLD, AUDIO_MAX_DISTANCE } from '../constants';
 import { BotChat } from './BotChat';
 import { Mic, MicOff, Monitor, MonitorOff, UserCircle } from 'lucide-react';
@@ -12,16 +13,27 @@ interface VirtualOfficeProps {
   toggleMute: () => void;
   isScreenSharing: boolean;
   toggleScreenShare: () => void;
+  editingMode: EditingMode;
 }
 
 type Direction = 'up' | 'down' | 'left' | 'right';
 
 export const VirtualOffice: React.FC<VirtualOfficeProps> = ({ 
-    userName, userStatus, userAvatarConfig, isMuted, toggleMute, isScreenSharing, toggleScreenShare
+    userName, userStatus, userAvatarConfig, isMuted, toggleMute, isScreenSharing, toggleScreenShare, editingMode
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
+  // Dynamic Map State
+  const [layout, setLayout] = useState<Rect[]>(OFFICE_LAYOUT);
+  const layoutRef = useRef<Rect[]>(OFFICE_LAYOUT); // Ref for physics loop access
+  const [mouseGridPos, setMouseGridPos] = useState<Position | null>(null);
+
+  // Sync ref when state changes
+  useEffect(() => {
+    layoutRef.current = layout;
+  }, [layout]);
+
   // Game State (Refs for Physics Loop)
   const userPosRef = useRef<Position>(INITIAL_USER_POS);
   const velocityRef = useRef({ x: 0, y: 0 });
@@ -86,7 +98,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     requestRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(requestRef.current!);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keysPressed, userName, userStatus, userAvatarConfig, isMuted, direction]); 
+  }, [keysPressed, userName, userStatus, userAvatarConfig, isMuted, direction, editingMode, mouseGridPos]); 
 
   const updatePhysics = () => {
     const SPEED = 6; 
@@ -120,8 +132,11 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     if (nextY < MIN_Y) { nextY = MIN_Y; }
     if (nextY > MAX_Y) { nextY = MAX_Y; }
 
-    // Object Collision
-    OFFICE_LAYOUT.forEach(rect => {
+    // Object Collision using Dynamic Layout Ref
+    layoutRef.current.forEach(rect => {
+      // Skip meeting_zone for physics collision
+      if (rect.type === 'meeting_zone' || rect.type === 'meeting_room') return;
+
       // Check X Movement Collision
       if (nextX + PLAYER_RADIUS > rect.x && nextX - PLAYER_RADIUS < rect.x + rect.w &&
           userPosRef.current.y + PLAYER_RADIUS > rect.y && userPosRef.current.y - PLAYER_RADIUS < rect.y + rect.h) {
@@ -146,7 +161,9 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     if (nextY <= MIN_Y || nextY >= MAX_Y) finalVy = 0;
     
     // Check objects again to zero velocity if stuck
-    OFFICE_LAYOUT.forEach(rect => {
+    layoutRef.current.forEach(rect => {
+        if (rect.type === 'meeting_zone' || rect.type === 'meeting_room') return;
+
         if (nextX + PLAYER_RADIUS > rect.x && nextX - PLAYER_RADIUS < rect.x + rect.w &&
           userPosRef.current.y + PLAYER_RADIUS > rect.y && userPosRef.current.y - PLAYER_RADIUS < rect.y + rect.h) {
              if (Math.abs(vx) > 0) finalVx = 0;
@@ -203,6 +220,46 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     setBotVolumes(newVolumes);
   };
 
+  // Map Editing Interaction
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (editingMode === 'none' || !canvasRef.current || !containerRef.current) {
+        setMouseGridPos(null);
+        return;
+    }
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Snap to 50x50 grid
+    const gridX = Math.floor(x / 50) * 50;
+    const gridY = Math.floor(y / 50) * 50;
+    
+    setMouseGridPos({ x: gridX, y: gridY });
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (editingMode === 'none' || !mouseGridPos) return;
+    
+    const newRect: Rect = { x: mouseGridPos.x, y: mouseGridPos.y, w: 50, h: 50, type: 'wall' };
+    
+    if (editingMode === 'wall') {
+        newRect.type = 'wall';
+    } else if (editingMode === 'meeting_zone') {
+        newRect.type = 'meeting_zone';
+    }
+
+    setLayout(prev => {
+        // Remove existing block at this position if any
+        const filtered = prev.filter(r => !(r.x === mouseGridPos.x && r.y === mouseGridPos.y));
+        
+        if (editingMode === 'eraser') {
+            return filtered;
+        } else {
+            return [...filtered, newRect];
+        }
+    });
+  };
+
   const renderCanvas = () => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -224,13 +281,71 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     }
     ctx.stroke();
 
-    // Objects
-    OFFICE_LAYOUT.forEach(rect => {
+    // Map Editing Grid Overlay
+    if (editingMode !== 'none') {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = 0; x <= CANVAS_WIDTH; x += 50) {
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, CANVAS_HEIGHT);
+        }
+        for (let y = 0; y <= CANVAS_HEIGHT; y += 50) {
+            ctx.moveTo(0, y);
+            ctx.lineTo(CANVAS_WIDTH, y);
+        }
+        ctx.stroke();
+        
+        // Ghost Block
+        if (mouseGridPos) {
+            if (editingMode === 'eraser') {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.5)';
+                ctx.fillRect(mouseGridPos.x, mouseGridPos.y, 50, 50);
+                ctx.strokeStyle = '#ef4444';
+                ctx.strokeRect(mouseGridPos.x, mouseGridPos.y, 50, 50);
+            } else {
+                ctx.fillStyle = editingMode === 'wall' ? 'rgba(51, 65, 85, 0.5)' : 'rgba(34, 197, 94, 0.3)';
+                ctx.fillRect(mouseGridPos.x, mouseGridPos.y, 50, 50);
+                ctx.strokeStyle = editingMode === 'wall' ? '#fff' : '#22c55e';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(mouseGridPos.x, mouseGridPos.y, 50, 50);
+            }
+        }
+    }
+
+    // Dynamic Objects (Layout)
+    layoutRef.current.forEach(rect => {
       if (rect.type === 'wall') {
         ctx.fillStyle = '#334155';
         ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
         ctx.fillStyle = '#1e293b'; // Depth
         ctx.fillRect(rect.x, rect.y + rect.h - 5, rect.w, 5);
+        // Highlight grid borders if editing walls
+        if (editingMode === 'wall') {
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        }
+      } else if (rect.type === 'meeting_zone' || rect.type === 'meeting_room') {
+        // Spatial Audio Zone Visualization
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.15)'; // Translucent green
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        
+        // Dashed border for zones
+        ctx.save();
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        
+        // Icon in center if it's large enough
+        if (rect.w >= 50 && rect.h >= 50) {
+             ctx.fillStyle = '#22c55e';
+             ctx.font = '10px sans-serif';
+             ctx.textAlign = 'center';
+             ctx.fillText("AUDIO", rect.x + rect.w/2, rect.y + rect.h/2 + 4);
+        }
+        ctx.restore();
+
       } else if (rect.type === 'desk') {
         ctx.fillStyle = '#475569';
         ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
@@ -485,7 +600,9 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
             ref={canvasRef} 
             width={CANVAS_WIDTH} 
             height={CANVAS_HEIGHT} 
-            className="bg-slate-950 shadow-xl"
+            className={`bg-slate-950 shadow-xl ${editingMode !== 'none' ? 'cursor-crosshair' : 'cursor-default'}`}
+            onMouseMove={handleMouseMove}
+            onMouseDown={handleMouseDown}
         />
       </div>
 
