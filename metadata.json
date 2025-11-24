@@ -3,6 +3,7 @@
   "description": "Una oficina virtual inmersiva con desplazamiento, audio posicional simulado, bots impulsados por Gemini y herramientas de colaboración.",
   "requestFramePermissions": [
     "camera",
-    "microphone"
+    "microphone",
+    "display-capture"
   ]
 }
