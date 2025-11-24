@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useRef, useEffect } from 'react';
 import { VirtualOffice } from './components/VirtualOffice';
 import { AvatarEditor } from './components/AvatarEditor';
 import { Status, AvatarConfig } from './types';
@@ -10,9 +11,10 @@ const App: React.FC = () => {
   const [status, setStatus] = useState<Status>(Status.AVAILABLE);
   const [isMuted, setIsMuted] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false); // New state for Chat button
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   
   // Avatar State
   const [avatarConfig, setAvatarConfig] = useState<AvatarConfig>(DEFAULT_AVATAR_CONFIG);
@@ -20,6 +22,12 @@ const App: React.FC = () => {
 
   // Admin State (Simulation)
   const isAdmin = true; // In a real app, this would come from auth
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+        videoRef.current.srcObject = stream;
+    }
+  }, [stream, isScreenSharing]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +43,14 @@ const App: React.FC = () => {
         setIsScreenSharing(false);
     } else {
         try {
+            // Verify API support
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+                alert("Tu navegador no soporta la función de compartir pantalla.");
+                return;
+            }
+
             const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            
             setStream(displayStream);
             setIsScreenSharing(true);
             
@@ -43,8 +58,19 @@ const App: React.FC = () => {
                 setIsScreenSharing(false);
                 setStream(null);
             };
-        } catch (err) {
+        } catch (err: any) {
             console.error("Error sharing screen:", err);
+            setIsScreenSharing(false);
+            setStream(null);
+
+            // Handle specific permission errors
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                alert("Permiso denegado. Para compartir pantalla, debes aceptar la solicitud del navegador. Inténtalo de nuevo.");
+            } else if (err.name === 'NotFoundError') {
+                alert("No se encontró ninguna pantalla o ventana para compartir.");
+            } else {
+                alert("Ocurrió un error al intentar compartir pantalla: " + (err.message || "Error desconocido"));
+            }
         }
     }
   };
@@ -115,10 +141,10 @@ const App: React.FC = () => {
         {isScreenSharing && stream && (
             <div className="absolute bottom-4 right-4 md:bottom-24 md:right-4 w-32 md:w-64 bg-black rounded-lg overflow-hidden border-2 border-green-500 shadow-2xl z-20">
                 <video 
+                    ref={videoRef}
                     autoPlay 
                     muted 
                     playsInline 
-                    ref={video => { if(video) video.srcObject = stream; }} 
                     className="w-full h-auto"
                 />
                 <div className="absolute top-2 left-2 bg-red-600 text-white text-[10px] px-2 py-1 rounded animate-pulse">

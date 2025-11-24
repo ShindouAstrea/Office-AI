@@ -126,10 +126,6 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       if (nextX + PLAYER_RADIUS > rect.x && nextX - PLAYER_RADIUS < rect.x + rect.w &&
           userPosRef.current.y + PLAYER_RADIUS > rect.y && userPosRef.current.y - PLAYER_RADIUS < rect.y + rect.h) {
              nextX = userPosRef.current.x; 
-             // We don't set vx to 0 here to allow sliding if needed, but for simple collisions stopping is fine.
-             // However, to ensure "isMoving" reflects input, we just clamp position.
-             // But visuals need to show walk.
-             // If blocked, effective velocity is 0.
       }
       
       // Check Y Movement Collision
@@ -140,23 +136,8 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     });
 
     userPosRef.current = { x: nextX, y: nextY };
-    // We store the INTENDED velocity (based on keys) for animation purposes, 
-    // or effective velocity? For "stopping when release key", we use the input velocity `vx/vy`.
-    // Even if blocked by a wall, the player is "trying" to move, so legs should move?
-    // Usually games stop legs against wall. Let's use input velocity.
-    // If we want legs to stop against wall, we'd check if (nextX === userPosRef.current.x)
     
-    const effectiveVx = nextX - (userPosRef.current.x - vx) === 0 && vx !== 0 ? 0 : vx;
-    const effectiveVy = nextY - (userPosRef.current.y - vy) === 0 && vy !== 0 ? 0 : vy;
-    
-    // Actually, simpler: just use input velocity for "isMoving" to feel responsive, 
-    // OR use effective velocity to feel "grounded". Let's use effective velocity.
-    // Re-calculating actual displacement:
-    // This is tricky because `userPosRef.current` is already updated to `nextX`.
-    // Let's just trust `vx` and `vy` as calculated from keys, but maybe zero them if collision happened?
-    // The previous code zeroed them inside collision loop. Let's restore that pattern but carefully.
-    
-    // Refined Collision Logic to update velocityRef correctly
+    // Refined Collision Logic to update velocityRef correctly for animations
     let finalVx = vx;
     let finalVy = vy;
     
@@ -275,7 +256,6 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
 
     // Render Player
     const playerVolume = !isMuted ? 1.0 : 0; 
-    // Use REF for instantaneous velocity check to ensure snappy stops
     const isMoving = Math.abs(velocityRef.current.x) > 0.1 || Math.abs(velocityRef.current.y) > 0.1;
     
     drawPixelAvatar(ctx, userPosRef.current.x, userPosRef.current.y, userName, userStatus, true, isMuted, isScreenSharing, playerVolume, userAvatarConfig, isMoving, direction);
@@ -309,19 +289,15 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     
     // Animation Calculations
     const time = frameCountRef.current;
-    // Walk Cycle: 20 frame loop. Only advance if moving.
     const walkPhase = (time % 20) / 20; 
     
-    // Force animations to 0 if not moving
     const legAngle = isMoving ? Math.sin(walkPhase * Math.PI * 2) * 20 : 0;
     const armAngle = isMoving ? -Math.sin(walkPhase * Math.PI * 2) * 20 : 0;
-    // Bobbing is now strictly tied to movement to ensure complete stillness when idle
     const bobY = isMoving ? Math.abs(Math.sin(walkPhase * Math.PI * 2)) * 2 : 0; 
 
     // Helper to draw grid layers
     const drawGrid = (layer: AvatarLayer, ox: number, oy: number, flipX: boolean = false) => {
         if (!layer.pixels) {
-            // Fallback for simple color
             if(layer.color && layer.color !== 'transparent') {
                 ctx.fillStyle = layer.color;
                 ctx.fillRect(x + ox * P, y + oy * P, 8 * P, 8 * P);
@@ -340,13 +316,10 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     };
 
     if (facing === 'up' || facing === 'down') {
-        // --- FRONT (Down) & BACK (Up) VIEW ---
         const isFront = facing === 'down';
-
-        // 1. LEFT LEG (From viewer perspective)
+        // --- FRONT & BACK RENDER LOGIC ---
         ctx.save();
         ctx.translate(x - 2 * P, y + 4 * P + bobY);
-        // Vertical slight swing for front/back walk
         if (isMoving) ctx.translate(0, Math.sin(walkPhase * Math.PI * 2) * 2); 
         ctx.fillStyle = config.legs.color;
         ctx.fillRect(-1.5 * P, 0, 3 * P, 7 * P);
@@ -354,7 +327,6 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         ctx.fillRect(-1.5 * P, 7 * P, 3 * P, 2 * P);
         ctx.restore();
 
-        // 2. RIGHT LEG
         ctx.save();
         ctx.translate(x + 2 * P, y + 4 * P + bobY);
         if (isMoving) ctx.translate(0, -Math.sin(walkPhase * Math.PI * 2) * 2);
@@ -364,21 +336,17 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         ctx.fillRect(-1.5 * P, 7 * P, 3 * P, 2 * P);
         ctx.restore();
 
-        // 3. TORSO
         drawGrid(config.torso, -4, -4 + (bobY/P));
 
-        // 4. ARMS (Side by side)
-        // Left Arm
         ctx.save();
         ctx.translate(x - 5 * P, y - 4 * P + bobY);
-        if (isMoving) ctx.rotate((armAngle * 0.5 * Math.PI) / 180); // Less swing in front view
+        if (isMoving) ctx.rotate((armAngle * 0.5 * Math.PI) / 180); 
         ctx.fillStyle = config.torso.color !== 'transparent' ? config.torso.color : config.skinColor;
         ctx.fillRect(0, 0, 2 * P, 7 * P);
         ctx.fillStyle = config.skinColor;
         ctx.fillRect(0, 7 * P, 2 * P, 2 * P);
         ctx.restore();
 
-        // Right Arm
         ctx.save();
         ctx.translate(x + 3 * P, y - 4 * P + bobY);
         if (isMoving) ctx.rotate((-armAngle * 0.5 * Math.PI) / 180);
@@ -388,36 +356,26 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         ctx.fillRect(0, 7 * P, 2 * P, 2 * P);
         ctx.restore();
 
-        // 5. HEAD
         const headY = -12 + (bobY/P);
         ctx.fillStyle = config.skinColor;
         ctx.fillRect(x - 4 * P, y + headY * P, 8 * P, 8 * P);
         
         if (isFront) {
-            // Draw Eyes (Centered)
             ctx.fillStyle = '#fff';
-            ctx.fillRect(x - 2 * P, y + (headY + 3) * P, 1 * P, 2 * P); // Left
-            ctx.fillRect(x + 1 * P, y + (headY + 3) * P, 1 * P, 2 * P); // Right
+            ctx.fillRect(x - 2 * P, y + (headY + 3) * P, 1 * P, 2 * P);
+            ctx.fillRect(x + 1 * P, y + (headY + 3) * P, 1 * P, 2 * P);
             ctx.fillStyle = config.eyeColor;
             ctx.fillRect(x - 1 * P, y + (headY + 3) * P, 1 * P, 2 * P); 
             ctx.fillRect(x + 2 * P, y + (headY + 3) * P, 1 * P, 2 * P);
-        } else {
-            // Back View: Maybe darken skin slightly to simulate shadow or back of neck
-             // Or just let hair cover it
         }
 
         drawGrid(config.head, -4, headY - 1);
-
-        // 6. ACCESSORY
         drawGrid(config.accessory, -5, -5 + (bobY/P));
 
     } else {
-        // --- SIDE VIEW (Left/Right) ---
-        // Same as previous Terraria logic
-        const dirMult = facing === 'left' ? -1 : 1;
+        // --- SIDE RENDER LOGIC ---
         const flip = facing === 'left';
 
-        // 1. BACK ARM
         ctx.save();
         ctx.translate(x, y - 4 * P + bobY);
         ctx.rotate((armAngle * Math.PI) / 180);
@@ -428,7 +386,6 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         ctx.fillRect(-2 * P, 8 * P, 3 * P, 2 * P);
         ctx.restore();
 
-        // 2. BACK LEG
         ctx.save();
         ctx.translate(x, y + 4 * P + bobY);
         ctx.rotate((-legAngle * Math.PI) / 180);
@@ -439,7 +396,6 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         ctx.fillRect(-2 * P, 7 * P, 4 * P, 2 * P);
         ctx.restore();
 
-        // 3. FRONT LEG
         ctx.save();
         ctx.translate(x, y + 4 * P + bobY);
         ctx.rotate((legAngle * Math.PI) / 180);
@@ -449,15 +405,12 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         ctx.fillRect(-2 * P, 7 * P, 4 * P, 2 * P);
         ctx.restore();
 
-        // 4. BODY
         drawGrid(config.torso, -4, -4 + (bobY/P), flip);
 
-        // 5. HEAD
         const headY = -12 + (bobY/P);
         ctx.fillStyle = config.skinColor;
         ctx.fillRect(x - 4 * P, y + headY * P, 8 * P, 8 * P);
         
-        // Eyes (Offset based on direction)
         const eyeOffset = flip ? -2 : 2;
         ctx.fillStyle = '#fff';
         ctx.fillRect(x + (eyeOffset - 1) * P, y + (headY + 3) * P, 1 * P, 2 * P);
@@ -466,7 +419,6 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
 
         drawGrid(config.head, -4, headY - 1, flip);
 
-        // 6. FRONT ARM
         ctx.save();
         ctx.translate(x, y - 4 * P + bobY);
         ctx.rotate((-armAngle * Math.PI) / 180);
@@ -476,8 +428,25 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         ctx.fillRect(-1 * P, 8 * P, 3 * P, 2 * P);
         ctx.restore();
 
-        // 7. ACCESSORY
         drawGrid(config.accessory, -5, -5 + (bobY/P), flip);
+    }
+
+    // --- SCREEN SHARE INDICATOR ---
+    if (isSharing) {
+        const iconY = y - 55;
+        // Monitor stand
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(x - 4, iconY + 16, 8, 4);
+        ctx.fillRect(x - 8, iconY + 20, 16, 2);
+        // Monitor bezel
+        ctx.fillStyle = '#3b82f6';
+        ctx.fillRect(x - 13, iconY - 1, 26, 18);
+        // Screen
+        ctx.fillStyle = '#93c5fd';
+        ctx.fillRect(x - 11, iconY + 1, 22, 14);
+        // Glare/Detail
+        ctx.fillStyle = '#dbeafe';
+        ctx.fillRect(x - 9, iconY + 3, 4, 3);
     }
 
     // --- HUD TAGS ---
