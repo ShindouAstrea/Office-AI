@@ -1,6 +1,16 @@
 
 import { Bot, Rect, Status, AvatarConfig, AvatarLayer, PixelGrid } from './types';
 
+// Detectar entorno para habilitar/deshabilitar bots
+const getEnv = (key: string) => {
+    if (import.meta && (import.meta as any).env) {
+        return (import.meta as any).env[key];
+    }
+    return false;
+};
+// Habilitar bots solo si estamos en DEV o si se habilita explícitamente
+const ENABLE_BOTS = getEnv("DEV") || getEnv("VITE_ENABLE_AI") === 'true';
+
 export const CANVAS_WIDTH = 2000;
 export const CANVAS_HEIGHT = 1500;
 export const PLAYER_RADIUS = 20;
@@ -55,7 +65,6 @@ export const CLOTHING_COLORS = [
 ];
 
 // 8x8 Hair Templates (0 = empty, 1 = hair color)
-// Simplistic representation of Terraria hairstyles
 export const HAIR_PRESETS: number[][][] = [
   // 1. Default / Bowl
   [
@@ -146,7 +155,7 @@ export const OFFICE_LAYOUT: Rect[] = [
   { x: 1800, y: 100, w: 40, h: 40, type: 'plant' },
 ];
 
-export const BOTS: Bot[] = [
+export const BOTS: Bot[] = ENABLE_BOTS ? [
   {
     id: 'bot-1',
     name: 'Ana (HR)',
@@ -210,4 +219,4 @@ export const BOTS: Bot[] = [
         accessory: createLayer('transparent')
     }
   }
-];
+] : [];

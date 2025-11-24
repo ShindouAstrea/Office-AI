@@ -1,16 +1,6 @@
+
 import { db } from "../firebaseConfig";
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  serverTimestamp,
-  setDoc,
-  doc,
-  getDocs
-} from "firebase/firestore";
+import firebase from "firebase/compat/app";
 
 export interface DBUser {
   uid: string;
@@ -33,20 +23,19 @@ export interface DBMessage {
 // Save user profile to Firestore on login
 export const saveUserProfile = async (user: any) => {
   if (!user) return;
-  const userRef = doc(db, "users", user.uid);
-  await setDoc(userRef, {
+  await db.collection("users").doc(user.uid).set({
     uid: user.uid,
     displayName: user.displayName || "Usuario",
     photoURL: user.photoURL || "",
     email: user.email || "",
-    lastSeen: serverTimestamp()
+    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 };
 
 // Listen to all users (for DM list)
 export const subscribeToUsers = (callback: (users: DBUser[]) => void) => {
-  const q = query(collection(db, "users"), orderBy("lastSeen", "desc"));
-  return onSnapshot(q, (snapshot) => {
+  const q = db.collection("users").orderBy("lastSeen", "desc");
+  return q.onSnapshot((snapshot) => {
     const users = snapshot.docs.map(doc => doc.data() as DBUser);
     callback(users);
   });
@@ -54,25 +43,23 @@ export const subscribeToUsers = (callback: (users: DBUser[]) => void) => {
 
 // Send a message
 export const sendMessage = async (text: string, sender: any, channelId: string) => {
-  await addDoc(collection(db, "messages"), {
+  await db.collection("messages").add({
     text,
     senderId: sender.uid,
     senderName: sender.displayName,
     senderPhoto: sender.photoURL,
     channelId,
-    timestamp: serverTimestamp()
+    timestamp: firebase.firestore.FieldValue.serverTimestamp()
   });
 };
 
 // Listen to messages for a specific channel
 export const subscribeToMessages = (channelId: string, callback: (msgs: DBMessage[]) => void) => {
-  const q = query(
-    collection(db, "messages"),
-    where("channelId", "==", channelId),
-    orderBy("timestamp", "asc")
-  );
+  const q = db.collection("messages")
+    .where("channelId", "==", channelId)
+    .orderBy("timestamp", "asc");
   
-  return onSnapshot(q, (snapshot) => {
+  return q.onSnapshot((snapshot) => {
     const messages = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()

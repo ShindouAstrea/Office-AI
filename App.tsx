@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { VirtualOffice } from './components/VirtualOffice';
 import { AvatarEditor } from './components/AvatarEditor';
@@ -6,12 +7,12 @@ import { Status, AvatarConfig, EditingMode } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './constants';
 import { Mic, MicOff, Monitor, MonitorOff, Settings, LogOut, MessageSquare, Hammer, Shirt, BrickWall, Volume2, Eraser, X, Chrome } from 'lucide-react';
 import { auth, googleProvider } from './firebaseConfig';
-import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import firebase from 'firebase/compat/app';
 import { saveUserProfile } from './services/chatService';
 
 const App: React.FC = () => {
   // Auth State
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<firebase.User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   const [name, setName] = useState("Visitante"); // Fallback or extracted from Google
@@ -33,7 +34,7 @@ const App: React.FC = () => {
   const [editingMode, setEditingMode] = useState<EditingMode>('none');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
       setCurrentUser(user);
       if (user) {
         setName(user.displayName || "Usuario");
@@ -52,7 +53,7 @@ const App: React.FC = () => {
 
   const handleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      await auth.signInWithPopup(googleProvider);
     } catch (error) {
       console.error("Login failed", error);
       alert("Error al iniciar sesión con Google. Revisa la consola o configuración de Firebase.");
@@ -60,7 +61,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await auth.signOut();
     setStream(null);
     setIsScreenSharing(false);
   };

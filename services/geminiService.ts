@@ -1,9 +1,28 @@
 import { GoogleGenAI } from "@google/genai";
 import { Bot } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to safely access env vars
+const getEnv = (key: string) => {
+    if (import.meta && (import.meta as any).env) {
+        return (import.meta as any).env[key];
+    }
+    return '';
+};
+
+const API_KEY = getEnv("VITE_GEMINI_API_KEY");
+const ENABLE_AI = API_KEY && (getEnv("DEV") || getEnv("VITE_ENABLE_AI") === 'true');
+
+let ai: GoogleGenAI | null = null;
+
+if (API_KEY) {
+    ai = new GoogleGenAI({ apiKey: API_KEY });
+}
 
 export const getGeminiResponse = async (message: string, bot: Bot, history: string[]): Promise<string> => {
+  if (!ai || !ENABLE_AI) {
+      return "Lo siento, mi cerebro de IA está desactivado en este momento.";
+  }
+
   const systemPrompt = `
     You are ${bot.name}, working as a ${bot.role}.
     Your description: ${bot.description}.

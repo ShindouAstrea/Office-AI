@@ -1,27 +1,36 @@
-import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
 
-// Configuración cargada desde variables de entorno (.env)
-// Vite expone las variables de entorno en import.meta.env
-// Using type assertion to bypass TypeScript error on import.meta.env
-const env = (import.meta as any).env;
+import firebase from "firebase/compat/app";
+import "firebase/compat/auth";
+import "firebase/compat/firestore";
 
-const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: env.VITE_FIREBASE_APP_ID
+// Helper to safely get environment variables in Vite
+const getEnv = (key: string) => {
+  // Check if import.meta.env exists
+  if (import.meta && (import.meta as any).env) {
+    return (import.meta as any).env[key];
+  }
+  return '';
 };
 
-// Validación para desarrollo
+const firebaseConfig = {
+  apiKey: getEnv("VITE_FIREBASE_API_KEY"),
+  authDomain: getEnv("VITE_FIREBASE_AUTH_DOMAIN"),
+  projectId: getEnv("VITE_FIREBASE_PROJECT_ID"),
+  storageBucket: getEnv("VITE_FIREBASE_STORAGE_BUCKET"),
+  messagingSenderId: getEnv("VITE_FIREBASE_MESSAGING_SENDER_ID"),
+  appId: getEnv("VITE_FIREBASE_APP_ID")
+};
+
+// Validación para desarrollo - solo warn si falta la API key
 if (!firebaseConfig.apiKey) {
-    console.error("Faltan las credenciales de Firebase. Asegúrate de tener un archivo .env con las variables VITE_FIREBASE_*");
+    console.warn("Advertencia: Faltan las credenciales de Firebase. La autenticación y el chat no funcionarán.");
 }
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-export const db = getFirestore(app);
+// Initialize Firebase (check apps length for hot-reload safety)
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+
+export const auth = firebase.auth();
+export const googleProvider = new firebase.auth.GoogleAuthProvider();
+export const db = firebase.firestore();
